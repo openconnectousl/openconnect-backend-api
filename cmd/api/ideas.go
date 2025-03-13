@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,7 +49,6 @@ func (app *application) createIdeaHandler(w http.ResponseWriter, r *http.Request
 		userID = user.ID
 	}
 
-	
 	// Get existing profile
 	profile, err := app.models.UserProfile.GetByUserID(user.ID)
 	if err != nil {
@@ -62,10 +62,14 @@ func (app *application) createIdeaHandler(w http.ResponseWriter, r *http.Request
 	}
 	fmt.Println("Profile ID:", profile)
 
-	pdfID, err := app.processAndSavePDF(input.PDF, w, r)
-	if err != nil {
-		app.serverErrorResponse(w, r, err)
-		return
+	var pdfID string
+	if input.PDF != "" {
+		var err error
+		pdfID, err = app.processAndSavePDF(input.PDF, w, r)
+		if err != nil {
+			app.serverErrorResponse(w, r, err)
+			return
+		}
 	}
 
 	idea := &data.Idea{
@@ -267,6 +271,7 @@ func (app *application) updateIdeaHandler(w http.ResponseWriter, r *http.Request
 		RecommendedLevel *string  `json:"recommended_level"`
 		GitHubLink       *string  `json:"github_link"`
 		WebsiteLink      *string  `json:"website_link"`
+		Feedback         *string  `json:"feedback"`
 		Status           *string  `json:"status"`
 	}
 
@@ -276,11 +281,17 @@ func (app *application) updateIdeaHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	uniqueID, err := app.processAndSavePDF(*input.PdfBase64, w, r)
-	if err != nil {
-		app.serverErrorResponse(w, r, err)
-		return
-	}
+	var uniqueID string
+    if input.PdfBase64 != nil && *input.PdfBase64 != "" {
+        var err error
+        uniqueID, err = app.processAndSavePDF(*input.PdfBase64, w, r)
+        if err != nil {
+            app.serverErrorResponse(w, r, err)
+            return
+        }
+        
+        idea.Pdf = uniqueID
+    }
 
 	if input.Title != nil {
 		idea.Title = *input.Title
@@ -302,6 +313,40 @@ func (app *application) updateIdeaHandler(w http.ResponseWriter, r *http.Request
 		idea.Pdf = uniqueID
 	}
 
+	if input.LearningOutcome != nil {
+		idea.LearningOutcome = *input.LearningOutcome
+	}
+
+	if input.RecommendedLevel != nil {
+		idea.RecommendedLevel = *input.RecommendedLevel
+	}
+
+	if input.GitHubLink != nil {
+		idea.GitHubLink = *input.GitHubLink
+	}
+
+	if input.WebsiteLink != nil {
+		idea.WebsiteLink = *input.WebsiteLink
+	}
+
+	if input.Feedback != nil {
+		idea.Feedback = sql.NullString{
+			String: *input.Feedback,
+			Valid: true,
+		}
+	} else {
+		idea.Feedback = sql.NullString{
+			Valid: false,
+		}
+	}
+
+
+	if input.Status != nil {
+		idea.Status = *input.Status
+	} else {
+		idea.Status = "pending"
+	}
+	
 	v := validator.New()
 
 	if data.ValidateIdea(v, idea); !v.Valid() {

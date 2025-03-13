@@ -11,8 +11,8 @@ import (
 
 type Permissions []string
 
-func (p Permissions)  Include(code string) bool {
-	for i :=  range p {
+func (p Permissions) Include(code string) bool {
+	for i := range p {
 		if code == p[i] {
 			return true
 		}
@@ -66,11 +66,12 @@ func (m PermissionModel) AddForUser(userID uuid.UUID, codes ...string) error {
 		SELECT $1, permissions.id
 		FROM permissions
 		WHERE permissions.code = ANY($2)
+		ON CONFLICT (user_id, permission_id) DO NOTHING
+
 	`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
 
 	_, err := m.DB.ExecContext(ctx, query, userID, pq.Array(codes))
 	return err

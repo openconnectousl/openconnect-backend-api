@@ -20,11 +20,13 @@ type Idea struct {
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 	UserID           uuid.UUID `json:"user_id"`
-	IdeaSourceID     string `json:"idea_source_id,omitempty"`
+	IdeaSourceID     string    `json:"idea_source_id,omitempty"`
 	Pdf              string    `json:"pdf"`
 	Category         string    `json:"category"`
 	Tags             []string  `json:"tags"`
 	Status           string    `json:"status"`
+	Feedback         sql.NullString    `json:"-"`
+	FeedbackStr      string         `json:"feedback,omitempty"` // For JSON output
 	LearningOutcome  string    `json:"learning_outcome,omitempty"`
 	RecommendedLevel string    `json:"recommended_level,omitempty"`
 	GitHubLink       string    `json:"github_link,omitempty"`
@@ -74,10 +76,9 @@ func ValidateIdea(v *validator.Validator, idea *Idea) {
 	if !ValidateUUID(idea.UserID.String()) {
 		v.AddError("user_id", "must be a valid UUID")
 	}
-// if !ValidateUUID(idea.IdeaSourceID.String()) {
-// 		v.AddError("idea_source_id", "must be a valid UUID")
-// 	}
-	
+	// if !ValidateUUID(idea.IdeaSourceID.String()) {
+	// 		v.AddError("idea_source_id", "must be a valid UUID")
+	// 	}
 
 	if idea.GitHubLink != "" {
 		v.Check(IsValidURL(idea.GitHubLink), "github_link", "must be a valid URL")
@@ -86,6 +87,13 @@ func ValidateIdea(v *validator.Validator, idea *Idea) {
 		v.Check(IsValidURL(idea.WebsiteLink), "website_link", "must be a valid URL")
 	}
 
+	v.Check(idea.LearningOutcome != "", "learning_outcome", "must be provided")
+
+	v.Check(len(idea.LearningOutcome) <= 1000, "learning_outcome", "must not be more than 1000 bytes long")
+
+	v.Check(idea.RecommendedLevel != "", "recommended_level", "must be provided")
+
+	v.Check(len(idea.RecommendedLevel) <= 50, "recommended_level", "must not be more than 50 bytes long")
 }
 
 func IsValidURL(str string) bool {
@@ -104,7 +112,7 @@ type IdeaModel struct {
 func (i IdeaModel) Insert(idea *Idea) error {
 
 	Status := "pending"
-	
+
 	query := `INSERT INTO ideas (title, description, user_id, idea_source_id, category, tags,
 	learning_outcome, recommended_level, github_link, website_link, status)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
@@ -132,11 +140,19 @@ func (i IdeaModel) Insert(idea *Idea) error {
 }
 
 func (i IdeaModel) Update(idea *Idea) error {
+
+	if idea.FeedbackStr != "" {
+        idea.Feedback = sql.NullString{
+            String: idea.FeedbackStr,
+            Valid: true,
+        }
+    }
 	query := `UPDATE ideas 
               SET title = $1, description = $2, user_id = $3, idea_source_id = $4, 
                   category = $5, tags = $6, learning_outcome = $7, recommended_level = $8,
-                  github_link = $9, website_link = $10, status = $11, version = version + 1 
-              WHERE id = $12 AND version = $13 
+                  github_link = $9, website_link = $10,
+				  feedback = $11, status = $12, version = version + 1 
+              WHERE id = $13 AND version = $14
               RETURNING version`
 
 	args := []any{
@@ -150,6 +166,7 @@ func (i IdeaModel) Update(idea *Idea) error {
 		idea.RecommendedLevel,
 		idea.GitHubLink,
 		idea.WebsiteLink,
+		idea.Feedback,
 		idea.Status,
 		idea.ID,
 		idea.Version,
@@ -172,7 +189,7 @@ func (i IdeaModel) Update(idea *Idea) error {
 
 func (i IdeaModel) Get(id uuid.UUID) (*Idea, error) {
 	query := `SELECT id, created_at, updated_at, title, description, user_id, idea_source_id, 
-                    category, tags, status, learning_outcome, recommended_level, github_link, 
+                    category, tags, status, learning_outcome, recommended_level, github_link, feedback,
                     website_link, version 
              FROM ideas 
              WHERE id = $1`
@@ -196,6 +213,7 @@ func (i IdeaModel) Get(id uuid.UUID) (*Idea, error) {
 		&idea.LearningOutcome,
 		&idea.RecommendedLevel,
 		&idea.GitHubLink,
+		&idea.Feedback,
 		&idea.WebsiteLink,
 		&idea.Version,
 	)
@@ -207,6 +225,14 @@ func (i IdeaModel) Get(id uuid.UUID) (*Idea, error) {
 		default:
 			return nil, err
 		}
+	}
+
+	// Check if the feedback is null and set it to an empty string if it is
+
+	if idea.Feedback.Valid {
+		idea.FeedbackStr = idea.Feedback.String
+	} else {
+		idea.FeedbackStr = ""
 	}
 
 	return &idea, nil
@@ -239,7 +265,7 @@ func (i IdeaModel) Delete(id uuid.UUID) error {
 func (i IdeaModel) GetAllIdeas(title string, tags []string, filters Filters) ([]*Idea, Metadata, error) {
 	query := fmt.Sprintf(`SELECT count(*) OVER(), id, created_at, updated_at, title, description, 
                                 user_id, idea_source_id, category, tags, status, learning_outcome, 
-                                recommended_level, github_link, website_link, version
+                                recommended_level, github_link, website_link, feedback, version
                           FROM ideas 
                           WHERE (to_tsvector('english', title) @@ plainto_tsquery('english', $1) OR $1 = '') 
                           AND (tags @> $2 OR $2 = '{}') 
@@ -280,6 +306,7 @@ func (i IdeaModel) GetAllIdeas(title string, tags []string, filters Filters) ([]
 			&idea.RecommendedLevel,
 			&idea.GitHubLink,
 			&idea.WebsiteLink,
+			&idea.Feedback,
 			&idea.Version,
 		)
 
@@ -311,7 +338,7 @@ func (i IdeaModel) GetAllByUserID(userID uuid.UUID, limit, offset int) ([]*Idea,
 	query := `
         SELECT id, created_at, updated_at, title, description, user_id, idea_source_id, 
                category, tags, status, learning_outcome, recommended_level, github_link,
-               website_link, version
+               website_link, feedback, version
         FROM ideas
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -354,6 +381,7 @@ func (i IdeaModel) GetAllByUserID(userID uuid.UUID, limit, offset int) ([]*Idea,
 			&idea.RecommendedLevel,
 			&idea.GitHubLink,
 			&idea.WebsiteLink,
+			&idea.Feedback,
 			&idea.Version,
 		)
 

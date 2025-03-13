@@ -109,6 +109,11 @@ func (app *application) isPDF(data []byte) bool {
 }
 
 func (app *application) processAndSavePDF(inputBase64 string, w http.ResponseWriter, r *http.Request) (string, error) {
+
+	if inputBase64 == "" {
+		return "", nil
+
+	}
 	pdfData, err := base64.StdEncoding.DecodeString(inputBase64)
 	if err != nil {
 		app.badRequestResponse(w, r, err)

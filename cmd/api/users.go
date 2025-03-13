@@ -116,6 +116,7 @@ func (app *application) activateUserHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+
 	user, err := app.models.Users.GetForToken(data.ScopeActivation, input.TokenPlainText)
 	if err != nil {
 		switch {
@@ -128,6 +129,19 @@ func (app *application) activateUserHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	permissions, err := app.models.Permissions.GetAllForUser(user.ID)
+    if err != nil {
+        app.serverErrorResponse(w, r, err)
+        return
+    }
+
+	if !permissions.Include("ideas:write") {
+        err = app.models.Permissions.AddForUser(user.ID, "ideas:write")
+        if err != nil {
+            app.serverErrorResponse(w, r, err)
+            return
+        }
+    }
 	user.Activated = true
 
 	err = app.models.Users.Update(user)

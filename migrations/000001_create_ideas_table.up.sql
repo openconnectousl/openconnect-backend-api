@@ -11,6 +11,6 @@ CREATE TABLE IF NOT EXISTS ideas (
     idea_source_id UUID,
     category VARCHAR(100) NOT NULL,
     tags TEXT[] NOT NULL,
-    status VARCHAR(50) NOT NULL DEFAULT 'pending',
-    version INT NOT NULL DEFAULT 1,
+    status VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    version INT NOT NULL DEFAULT 1
 );
