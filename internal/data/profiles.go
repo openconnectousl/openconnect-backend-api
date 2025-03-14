@@ -70,13 +70,13 @@ type ProfileModel struct {
 func (m ProfileModel) GetAllProfilesWithIdeas(limit int, offset int) ([]*UserProfileWithIdeas, error) {
 	query := `
         SELECT u.id, u.user_name, u.email, u.user_type, u.created_at,
-		u.has_profile_created,
+        u.has_profile_created,
                p.firstname, p.lastname, p.avatar, p.title, p.bio, 
                p.faculty, p.program, p.degree, p.year, p.uni, p.mobile, 
                p.linkedin, p.github, p.fb, p.updated_at
         FROM users u
         LEFT JOIN user_profiles p ON u.id = p.user_id
-		WHERE u.has_profile_created = true
+        WHERE u.has_profile_created = true AND u.user_type != 'admin'
         ORDER BY u.created_at DESC
         LIMIT $1 OFFSET $2`
 
