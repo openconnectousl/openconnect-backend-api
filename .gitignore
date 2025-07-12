@@ -10,6 +10,7 @@
 /bin/
 /main
 
+/cmd/api/.env
 # Dependency directories (remove the comment below if you want to check in your vendor directory)
 # /vendor/
 
